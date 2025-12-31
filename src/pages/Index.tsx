@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Icon from '@/components/ui/icon';
+import AuthScreen from '@/components/AuthScreen';
+import ThemeSelector from '@/components/ThemeSelector';
 
 type Chat = {
   id: number;
@@ -28,9 +30,20 @@ type Message = {
 };
 
 const Index = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<{ name: string; email: string; phone: string } | null>(null);
+  const [showThemeSelector, setShowThemeSelector] = useState(false);
   const [activeSection, setActiveSection] = useState<'chats' | 'contacts' | 'channels' | 'profile' | 'settings' | 'archive'>('chats');
   const [selectedChat, setSelectedChat] = useState<number | null>(1);
   const [messageText, setMessageText] = useState('');
+  const [messages, setMessages] = useState<Message[]>([
+    { id: 1, text: 'Привет! Как дела?', time: '14:20', own: false, status: 'read' },
+    { id: 2, text: 'Отлично! А у тебя?', time: '14:21', own: true, status: 'read', reactions: ['👍', '❤️'] },
+    { id: 3, text: 'Тоже хорошо! Готов к завтрашней встрече?', time: '14:22', own: false, status: 'read' },
+    { id: 4, text: 'Отлично! Встречаемся завтра', time: '14:23', own: true, status: 'delivered' },
+  ]);
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const chats: Chat[] = [
     { id: 1, name: 'Анна Смирнова', avatar: '👩‍💼', lastMessage: 'Отлично! Встречаемся завтра', time: '14:23', unread: 2, online: true, premium: true },
@@ -40,14 +53,72 @@ const Index = () => {
     { id: 5, name: 'Мария Ковалева', avatar: '👩‍🎤', lastMessage: 'Увидимся на встрече!', time: 'Вчера', premium: true },
   ];
 
-  const messages: Message[] = [
-    { id: 1, text: 'Привет! Как дела?', time: '14:20', own: false, status: 'read' },
-    { id: 2, text: 'Отлично! А у тебя?', time: '14:21', own: true, status: 'read', reactions: ['👍', '❤️'] },
-    { id: 3, text: 'Тоже хорошо! Готов к завтрашней встрече?', time: '14:22', own: false, status: 'read' },
-    { id: 4, text: 'Отлично! Встречаемся завтра', time: '14:23', own: true, status: 'delivered' },
-  ];
-
   const selectedChatData = chats.find(c => c.id === selectedChat);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!messageText.trim()) return;
+
+    const now = new Date();
+    const timeString = `${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+    const newMessage: Message = {
+      id: messages.length + 1,
+      text: messageText,
+      time: timeString,
+      own: true,
+      status: 'sent',
+    };
+
+    setMessages([...messages, newMessage]);
+    setMessageText('');
+
+    setTimeout(() => {
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === newMessage.id ? { ...msg, status: 'delivered' as const } : msg
+        )
+      );
+    }, 500);
+
+    setTimeout(() => {
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === newMessage.id ? { ...msg, status: 'read' as const } : msg
+        )
+      );
+    }, 1500);
+
+    setIsTyping(true);
+    setTimeout(() => {
+      setIsTyping(false);
+      const replyMessage: Message = {
+        id: messages.length + 2,
+        text: 'Понял тебя! 👍',
+        time: `${now.getHours()}:${(now.getMinutes() + 1).toString().padStart(2, '0')}`,
+        own: false,
+        status: 'read',
+      };
+      setMessages(prev => [...prev, replyMessage]);
+    }, 2000);
+  };
+
+  const handleAuthSuccess = (userData: { name: string; email: string; phone: string }) => {
+    setUser(userData);
+    setIsAuthenticated(true);
+  };
+
+  if (!isAuthenticated) {
+    return <AuthScreen onAuthSuccess={handleAuthSuccess} />;
+  }
 
   const renderSection = () => {
     switch (activeSection) {
@@ -126,7 +197,7 @@ const Index = () => {
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {selectedChatData.online ? 'В сети' : 'Был(а) недавно'}
+                          {isTyping ? 'печатает...' : selectedChatData.online ? 'В сети' : 'Был(а) недавно'}
                         </p>
                       </div>
                     </div>
@@ -145,10 +216,11 @@ const Index = () => {
 
                   <ScrollArea className="flex-1 p-4">
                     <div className="space-y-4">
-                      {messages.map(msg => (
+                      {messages.map((msg, index) => (
                         <div
                           key={msg.id}
                           className={`flex ${msg.own ? 'justify-end' : 'justify-start'} animate-fade-in`}
+                          style={{ animationDelay: `${index * 0.05}s` }}
                         >
                           <div className={`max-w-md ${msg.own ? 'order-2' : 'order-1'}`}>
                             <div
@@ -162,6 +234,7 @@ const Index = () => {
                             </div>
                             <div className={`flex items-center gap-2 mt-1 text-xs text-muted-foreground ${msg.own ? 'justify-end' : 'justify-start'}`}>
                               <span>{msg.time}</span>
+                              {msg.own && msg.status === 'sent' && <Icon name="Check" size={14} />}
                               {msg.own && msg.status === 'delivered' && <Icon name="Check" size={14} />}
                               {msg.own && msg.status === 'read' && <Icon name="CheckCheck" size={14} className="text-primary" />}
                             </div>
@@ -177,12 +250,13 @@ const Index = () => {
                           </div>
                         </div>
                       ))}
+                      <div ref={messagesEndRef} />
                     </div>
                   </ScrollArea>
 
                   <div className="p-4 border-t border-border">
-                    <div className="flex items-end gap-2">
-                      <Button variant="ghost" size="icon">
+                    <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+                      <Button type="button" variant="ghost" size="icon">
                         <Icon name="Paperclip" size={20} />
                       </Button>
                       <div className="flex-1 flex items-end gap-2 bg-muted rounded-2xl px-4 py-2">
@@ -192,14 +266,14 @@ const Index = () => {
                           onChange={(e) => setMessageText(e.target.value)}
                           className="border-0 bg-transparent p-0 focus-visible:ring-0"
                         />
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
                           <Icon name="Smile" size={18} />
                         </Button>
                       </div>
-                      <Button size="icon" className="gradient-purple-pink rounded-full">
+                      <Button type="submit" size="icon" className="gradient-purple-pink rounded-full">
                         <Icon name="Send" size={20} />
                       </Button>
-                    </div>
+                    </form>
                   </div>
                 </>
               ) : (
@@ -246,10 +320,17 @@ const Index = () => {
               <Avatar className="h-24 w-24 mx-auto mb-4">
                 <AvatarFallback className="text-4xl">👤</AvatarFallback>
               </Avatar>
-              <h3 className="text-xl font-semibold mb-2">Ваш профиль</h3>
+              <h3 className="text-xl font-semibold mb-2">{user?.name || 'Ваш профиль'}</h3>
+              <p className="text-sm text-muted-foreground mb-2">{user?.email}</p>
+              <p className="text-sm text-muted-foreground mb-4">{user?.phone}</p>
               <Badge className="gradient-purple-pink text-white mb-4">PRO подписка</Badge>
               <p className="text-muted-foreground mb-4">Эксклюзивные темы и приоритетная поддержка</p>
-              <Button className="gradient-purple-pink">Редактировать профиль</Button>
+              <div className="flex gap-2 justify-center">
+                <Button className="gradient-purple-pink">Редактировать профиль</Button>
+                <Button variant="outline" onClick={() => setIsAuthenticated(false)}>
+                  Выйти
+                </Button>
+              </div>
             </div>
           </div>
         );
@@ -262,8 +343,14 @@ const Index = () => {
               <h3 className="text-xl font-semibold mb-2">Настройки</h3>
               <p className="text-muted-foreground mb-4">Персонализируйте ваш мессенджер</p>
               <div className="flex gap-2 justify-center">
-                <Button className="gradient-purple-pink">Темы</Button>
-                <Button className="gradient-blue-purple">Уведомления</Button>
+                <Button className="gradient-purple-pink" onClick={() => setShowThemeSelector(true)}>
+                  <Icon name="Palette" size={18} className="mr-2" />
+                  Темы
+                </Button>
+                <Button className="gradient-blue-purple">
+                  <Icon name="Bell" size={18} className="mr-2" />
+                  Уведомления
+                </Button>
               </div>
             </div>
           </div>
@@ -286,71 +373,79 @@ const Index = () => {
   };
 
   return (
-    <div className="h-screen flex">
-      <div className="w-20 bg-card border-r border-border flex flex-col items-center py-4 gap-4">
-        <div className="w-12 h-12 gradient-purple-pink rounded-2xl flex items-center justify-center text-2xl font-bold text-white mb-4">
-          ДВ
+    <>
+      <div className="h-screen flex">
+        <div className="w-20 bg-card border-r border-border flex flex-col items-center py-4 gap-4">
+          <div className="w-12 h-12 gradient-purple-pink rounded-2xl flex items-center justify-center text-2xl font-bold text-white mb-4">
+            ДВ
+          </div>
+          
+          <Button
+            variant={activeSection === 'chats' ? 'default' : 'ghost'}
+            size="icon"
+            className={activeSection === 'chats' ? 'gradient-purple-pink' : ''}
+            onClick={() => setActiveSection('chats')}
+          >
+            <Icon name="MessageCircle" size={24} />
+          </Button>
+          
+          <Button
+            variant={activeSection === 'contacts' ? 'default' : 'ghost'}
+            size="icon"
+            className={activeSection === 'contacts' ? 'gradient-purple-pink' : ''}
+            onClick={() => setActiveSection('contacts')}
+          >
+            <Icon name="Users" size={24} />
+          </Button>
+          
+          <Button
+            variant={activeSection === 'channels' ? 'default' : 'ghost'}
+            size="icon"
+            className={activeSection === 'channels' ? 'gradient-purple-pink' : ''}
+            onClick={() => setActiveSection('channels')}
+          >
+            <Icon name="Radio" size={24} />
+          </Button>
+          
+          <Button
+            variant={activeSection === 'archive' ? 'default' : 'ghost'}
+            size="icon"
+            className={activeSection === 'archive' ? 'gradient-purple-pink' : ''}
+            onClick={() => setActiveSection('archive')}
+          >
+            <Icon name="Archive" size={24} />
+          </Button>
+          
+          <div className="flex-1" />
+          
+          <Button
+            variant={activeSection === 'profile' ? 'default' : 'ghost'}
+            size="icon"
+            className={activeSection === 'profile' ? 'gradient-purple-pink' : ''}
+            onClick={() => setActiveSection('profile')}
+          >
+            <Icon name="User" size={24} />
+          </Button>
+          
+          <Button
+            variant={activeSection === 'settings' ? 'default' : 'ghost'}
+            size="icon"
+            className={activeSection === 'settings' ? 'gradient-purple-pink' : ''}
+            onClick={() => setActiveSection('settings')}
+          >
+            <Icon name="Settings" size={24} />
+          </Button>
         </div>
-        
-        <Button
-          variant={activeSection === 'chats' ? 'default' : 'ghost'}
-          size="icon"
-          className={activeSection === 'chats' ? 'gradient-purple-pink' : ''}
-          onClick={() => setActiveSection('chats')}
-        >
-          <Icon name="MessageCircle" size={24} />
-        </Button>
-        
-        <Button
-          variant={activeSection === 'contacts' ? 'default' : 'ghost'}
-          size="icon"
-          className={activeSection === 'contacts' ? 'gradient-purple-pink' : ''}
-          onClick={() => setActiveSection('contacts')}
-        >
-          <Icon name="Users" size={24} />
-        </Button>
-        
-        <Button
-          variant={activeSection === 'channels' ? 'default' : 'ghost'}
-          size="icon"
-          className={activeSection === 'channels' ? 'gradient-purple-pink' : ''}
-          onClick={() => setActiveSection('channels')}
-        >
-          <Icon name="Radio" size={24} />
-        </Button>
-        
-        <Button
-          variant={activeSection === 'archive' ? 'default' : 'ghost'}
-          size="icon"
-          className={activeSection === 'archive' ? 'gradient-purple-pink' : ''}
-          onClick={() => setActiveSection('archive')}
-        >
-          <Icon name="Archive" size={24} />
-        </Button>
-        
-        <div className="flex-1" />
-        
-        <Button
-          variant={activeSection === 'profile' ? 'default' : 'ghost'}
-          size="icon"
-          className={activeSection === 'profile' ? 'gradient-purple-pink' : ''}
-          onClick={() => setActiveSection('profile')}
-        >
-          <Icon name="User" size={24} />
-        </Button>
-        
-        <Button
-          variant={activeSection === 'settings' ? 'default' : 'ghost'}
-          size="icon"
-          className={activeSection === 'settings' ? 'gradient-purple-pink' : ''}
-          onClick={() => setActiveSection('settings')}
-        >
-          <Icon name="Settings" size={24} />
-        </Button>
+
+        {renderSection()}
       </div>
 
-      {renderSection()}
-    </div>
+      <ThemeSelector
+        open={showThemeSelector}
+        onClose={() => setShowThemeSelector(false)}
+        onThemeSelect={() => {}}
+      />
+    </>
   );
 };
 
